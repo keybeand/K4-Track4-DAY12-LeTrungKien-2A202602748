@@ -117,12 +117,43 @@ def replay(segs, make_stream, mode="fastest", cost_seed=0, spike_prob=0.02, base
 def compare_with_tol(golden, new, atol=1e-3, rtol=1e-3):
     """Segment-by-segment comparison. A segment 'differs' if any command is outside atol + rtol * |golden|.
     Also reports how many segments are not bit-identical, to show why exact equality is the wrong test."""
-    # TODO (Bước 1): hãy tự cài hàm này. Gợi ý:
-    #   golden và new có shape (n_seg, T), NaN ở phần đệm. Một đoạn 'lệch' nếu có lệnh nào vượt atol + rtol
-    #   * |golden|. Hai NaN ở cùng vị trí coi là bằng nhau. Trả dict có đúng các khoá: segments,
-    #   differ_beyond_tol, not_bit_identical (số đoạn không giống TỪNG BIT), max_abs_diff, atol, rtol,
-    #   differing_segments (tối đa 20 chỉ số đầu, dạng list).
-    raise NotImplementedError("TODO compare_with_tol: xem GUIDE.md, Bước 1")
+    golden = np.asarray(golden)
+    new = np.asarray(new)
+    n_seg = len(golden)
+
+    nan_g = np.isnan(golden)
+    nan_n = np.isnan(new)
+    nan_both = nan_g & nan_n
+    nan_mismatch = (nan_g != nan_n)
+
+    # Đếm số đoạn không giống từng bit (hai NaN ở cùng vị trí coi là giống nhau)
+    identical_elements = (golden == new) | nan_both
+    not_bit_identical_seg = ~np.all(identical_elements, axis=1)
+    not_bit_identical = int(np.sum(not_bit_identical_seg))
+
+    # So sánh vượt dung sai: |golden - new| > atol + rtol * |golden|
+    diff = np.abs(golden - new)
+    tol = atol + rtol * np.abs(golden)
+    beyond_tol = (diff > tol) | nan_mismatch
+    beyond_tol = np.where(nan_both, False, beyond_tol)
+
+    differ_seg_mask = np.any(beyond_tol, axis=1)
+    differ_beyond_tol = int(np.sum(differ_seg_mask))
+    differing_segments = [int(i) for i in np.flatnonzero(differ_seg_mask)[:20]]
+
+    # Sai số tuyệt đối lớn nhất trên các phần tử hợp lệ
+    valid_diff = np.where(nan_g | nan_n, np.nan, diff)
+    max_abs_diff = float(np.nanmax(valid_diff)) if np.any(~np.isnan(valid_diff)) else 0.0
+
+    return {
+        "segments": n_seg,
+        "differ_beyond_tol": differ_beyond_tol,
+        "not_bit_identical": not_bit_identical,
+        "max_abs_diff": max_abs_diff,
+        "atol": float(atol),
+        "rtol": float(rtol),
+        "differing_segments": differing_segments,
+    }
 
 
 def summation_order_demo(n=1_000_000, seed=0):
